@@ -1,0 +1,180 @@
+
+1 - Upload de fichier vers CMX (FSADA) : 
+java '-Dspring.datasource.url=jdbc:sqlite:C:\Chemin\DB\Sqlite.db' -Dspring.profiles.active=fsada -jar 'C:\Chemin\CMX\CLI.jar' --fsada
+
+2 - L'Extractor :
+
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=NOM_TACHE
+
+- CsvFilesExtractor
+- DeleteDocumentV3
+- DocumentExistenceChecker
+- CoreDataDump
+
+
+java -jar cmx-extractor.jar -resources=resources -task=CoreDataDump
+
+
+Hello messieurs,
+
+Comme convenu, je reviens vers vous avec les éléments demandés lors de notre dernière rencontre :
+
+- Pour le Swagger, pas d'URL publique aujourd'hui mais je vous joins le fichier `openapi.yaml` qui représente la dernière version de l'API CMX Core.
+- La documentation technique de CMX est décrite dans le document "Service Definition" que je vous joints en PDF ici.
+- Les 2 outils sous forme de CLI sont également joints : cmx-extractor.jar et cmx-content.transfer.jar
+
+Modes opératoires : 
+
+1 - Transfert de fichiers depuis un file-system vers CMX :
+
+Utiliser l'outil `cmx-content-transfer-cli.jar` (cf. Documentation : https://confluence.axa.com/confluence/spaces/BB3A/pages/127751013/Content+Transfer+CLI)
+
+2 - Opérations sur les fichiers dans CMX :
+L'outil `cmx-extractor.jar` propose un ensemble d'opérations sur les documents stockés dans CMX :
+
+- Vérification de l'existence via la tâche `DocumentExistenceChecker` :
+Utilisation : 
+```
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=DocumentExistenceChecker
+```
+
+Paramètres dans le fichier `documentExistenceChecker.json` :
+
+```
+{
+  "inputFile": "liste_des_ids_de_fichiers_à_vérifier.csv", # Fichier CSV avec une seule colonne
+  "outputDir": "outputs",
+  "nbThreads": 4,
+  "searchPageSize": 100
+}
+```
+
+- Vérification de l'existence :
+Utilisation : 
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=DocumentExistenceChecker
+Paramètres dans le fichier `documentExistenceChecker.json` :
+```
+{
+  "inputFile": "liste_des_ids_de_fichiers_à_vérifier.csv", # Fichier CSV avec une seule colonne
+  "outputDir": "outputs",
+  "nbThreads": 4,
+  "searchPageSize": 100
+}
+```
+
+- Inventaire d'un DocStore via la tâche `CsvFilesExtractor` :
+Utilisation : 
+```
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=CsvFilesExtractor
+```
+
+Paramètres dans le fichier `referential.json` :
+```
+{
+    "filesToCreate": [
+        {
+            "fileName": "PV_RECETTE_GIE_AGPC8.csv",
+            "columns": [ # Lister ici les métadonnées techniques et business à afficher dans le CSV de sortie 
+                "_internalId",
+                "_externalId",
+                "_creationDate",
+                "_name",
+                "oldFilePath",
+                "projectId",
+                "dataPrivacy",
+                "dataCategory",
+                "_sensitivity",
+                "_maxRetentionDate"
+            ],
+            "searchCriteria": { 
+                "$and": [ # Combinez les différents critères de recherches avec les opérateurs logiques : &and, &not, etc ...
+                    {
+                        "applicationSource": { # Utiliser les métadonnées comme critère de recherche
+                            "$eq": "agpc8"
+                        }
+                    }
+                ]
+            },
+            "fileColumns": [ # Section utilisable en cas de besoin de vérification des fichers dans les CMX Documents
+                "id",
+                "fileName",
+                "size"
+            ]
+        }
+    ]
+}
+```
+
+- Suppression de CMX Documents via la tâche `DeleteDocumentV3`
+Utilisation:
+```
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=DeleteDocumentV3
+```
+
+Paramètres dans le fichier `deleteDocument.json` :
+```
+{
+  "erase": false, # TRUE = Suppression physique
+  "dryRun": false, # Penser à l'utiliser pour simuler la suppression
+  "searchCriteria": {
+    "$and": [
+      {
+        "applicationSource": {
+          "$eq": "prnasclio"
+        }
+      },
+      {
+        "_maxRetentionDate": {
+          "$eq": "1945-01-01T00:00:01+01:00"
+        }
+      }
+    ]
+  }
+}
+```
+
+- Téléchargement du contenu d'un DocStore via la tâche `CoreDataDump` :
+Utilisation :
+```
+java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=CoreDataDump
+```
+
+Paramètres dans le fichier `coreDataDump.json` :
+```
+{
+  "extractionCriteria": {
+    "$and": [
+      {
+        "applicationSource": {
+          "$eq": "prnasclio"
+        }
+      }
+    ]
+  }
+}
+```
+
+NB : La tâche `CoreDataDump` permet de télécharger les CMX Documents d'un CMX Store sous la forme de cette arborescence :
+```
+Root_folder(extractor.jar)
+	|____storeId_${your_doc_store_id}
+								|______docId_${firs_cmx_document_id}
+															|________${first_cmx_document_id}.json`
+															|________${first_cmx_document_id_first_file_id}.content` # Dump du contenu du 1er fichier 
+															|________etc .....
+								|______etc ...
+```
+
+L'outil `cmx-extractor.jar` utilise le fichier `cmx-extractor.properties` qui se met dans les dossier de ressources (fichiers JSON) pour alimenter les propriétés :
+```
+cmx.maam.url:  URL de OneLogin par environnement
+cmx.maam.user: Client ID 
+cmx.maam.password: Client Secret
+
+cmx.core.url: URL de CMX Core (selon l'environnement)
+cmx.core.storeid: L'ID du CMX DocStore
+cmx.core.nbThreads: Nombre de tâches en parallèle
+cmx.core.max-retry: Nombre de retry en cas d'échec
+
+cmx.core.profile: Profil CMX
+```
