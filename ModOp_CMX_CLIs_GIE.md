@@ -1,28 +1,4 @@
 
-1 - Upload de fichier vers CMX (FSADA) : 
-java '-Dspring.datasource.url=jdbc:sqlite:C:\Chemin\DB\Sqlite.db' -Dspring.profiles.active=fsada -jar 'C:\Chemin\CMX\CLI.jar' --fsada
-
-2 - L'Extractor :
-
-java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURCES' -task=NOM_TACHE
-
-- CsvFilesExtractor
-- DeleteDocumentV3
-- DocumentExistenceChecker
-- CoreDataDump
-
-
-java -jar cmx-extractor.jar -resources=resources -task=CoreDataDump
-
-
-Hello messieurs,
-
-Comme convenu, je reviens vers vous avec les éléments demandés lors de notre dernière rencontre :
-
-- Pour le Swagger, pas d'URL publique aujourd'hui mais je vous joins le fichier `openapi.yaml` qui représente la dernière version de l'API CMX Core.
-- La documentation technique de CMX est décrite dans le document "Service Definition" que je vous joints en PDF ici.
-- Les 2 outils sous forme de CLI sont également joints : cmx-extractor.jar et cmx-content.transfer.jar
-
 # CMX Tools – Modes opératoires
 
 Ce document décrit les principaux modes opératoires permettant :
@@ -48,7 +24,7 @@ L’outil **cmx-extractor.jar** permet d’exécuter différentes opérations su
 
 ---
 
-### 2.1 Vérification de l’existence de documents  
+### 2.1 Vérification de l’existence de documents
 **Tâche : DocumentExistenceChecker**
 
 #### Utilisation
@@ -68,7 +44,7 @@ java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURC
 
 ---
 
-### 2.2 Inventaire d’un DocStore  
+### 2.2 Inventaire d’un DocStore
 **Tâche : CsvFilesExtractor**
 
 #### Utilisation
@@ -115,7 +91,7 @@ java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURC
 
 ---
 
-### 2.3 Suppression de documents CMX  
+### 2.3 Suppression de documents CMX
 **Tâche : DeleteDocumentV3**
 
 #### Utilisation
@@ -147,7 +123,7 @@ java 'C:\Chemin\CMX\EXTRACTOR.jar' -resourcesPath='C:\Chemin\Repertoire\RESSOURC
 
 ---
 
-### 2.4 Téléchargement du contenu d’un DocStore  
+### 2.4 Téléchargement du contenu d’un DocStore
 **Tâche : CoreDataDump**
 
 #### Utilisation
