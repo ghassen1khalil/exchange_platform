@@ -1,0 +1,929 @@
+{
+  "name": "Session distante VM - Video vers compte rendu (frames + vision LLM)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🎬 Session distante (VM) : vidéo → compte rendu\n\n**Pipeline** : vidéo `.avi` → ffprobe → ffmpeg (frames JPEG + timecodes) → modèle vision par lots de frames (avec contexte du lot précédent) → chronologie → synthèse LLM → `report.md` + `timeline.json`.\n\n### Prérequis\n1. **ffmpeg + ffprobe** dans le conteneur n8n (image custom : `RUN apk add --no-cache ffmpeg`).\n2. **Execute Command** activé : retirer `n8n-nodes-base.executeCommand` de `NODES_EXCLUDE` (désactivé par défaut sur n8n 2.x).\n3. Dossier de travail `/home/node/.n8n-files` (par défaut le seul autorisé pour les nœuds *Read/Write Files*, voir `N8N_RESTRICT_FILE_ACCESS_TO`).\n4. Credential **Anthropic API** sur les 2 nœuds HTTP « Anthropic » (ou `provider: 'ollama'` pour rester 100 % local).\n5. Upload > 16 Mo via Webhook : augmenter `N8N_PAYLOAD_SIZE_MAX`, ou déposer le fichier dans le dossier de travail et passer `videoPath`.\n\n### Deux façons de lancer\n- **Manual Trigger** : éditer `manualVideoPath` dans le nœud *Init Job*.\n- **Webhook** : `curl -X POST https://<n8n>/webhook/session-video-report -F \"video=@session.avi\" -F \"language=français\"`\n  ou en JSON : `{\"videoPath\":\"/home/node/.n8n-files/session.avi\",\"mode\":\"scene\"}`\n  (protéger le Webhook avec une authentification Header Auth en production).",
+        "height": 470,
+        "width": 760,
+        "color": 4
+      },
+      "id": "6fc7eb81-5256-47ad-bc20-62e0eb6843e8",
+      "name": "Note 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -520
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Configuration\nTout se règle en haut du code du nœud **Init Job** (objet `CONFIG`) : mode d'extraction (`interval` / `scene`), fréquence, taille des lots, modèles, provider, langue, contexte de session, nettoyage.\n\nParamètres surchargeables par appel Webhook : mode, frameIntervalSec, sceneThreshold, maxGapSec, maxFrames, batchSize, contextFramesCount, provider, visionModel, summaryModel, language, sessionContext, cleanupFrames.",
+        "height": 330,
+        "width": 520,
+        "color": 5
+      },
+      "id": "0741ffe8-d7b7-4fc1-87df-75c6dccccf53",
+      "name": "Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        700,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎞️ Extraction\n`ffprobe` lit durée / résolution. `ffmpeg` génère une frame JPEG (largeur max 1280 px) toutes les N s, ou à chaque changement d'écran (mode `scene`, avec une frame forcée au moins toutes les `maxGapSec`).\nLes **vrais timecodes** sont relus dans le log `showinfo`. Si la vidéo donnerait plus de `maxFrames` images, l'intervalle est automatiquement allongé.",
+        "height": 330,
+        "width": 520,
+        "color": 6
+      },
+      "id": "2a803bb1-ec54-42c6-aa85-5ce6055517bb",
+      "name": "Note 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔁 Boucle d'analyse vision\nPar lot de `batchSize` frames : lecture des JPEG, construction d'**une** requête multi-images (avec les dernières analyses en contexte), appel Anthropic ou Ollama, parsing JSON tolérant.\nEn cas d'échec d'un lot (après 3 essais), les frames concernées sont marquées « analyse indisponible » et le pipeline continue.\n💡 Pour limiter la taille des exécutions enregistrées (images en base64), désactiver « Save successful production executions » dans les réglages du workflow.",
+        "height": 250,
+        "width": 1100,
+        "color": 7
+      },
+      "id": "211bc66c-9646-476f-9636-6ab54c479c18",
+      "name": "Note 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📝 Synthèse et sortie\nLes frames sans changement sont fusionnées, la chronologie est compactée si besoin (`summaryMaxChars`), puis un second appel LLM rédige le compte rendu (résumé, contexte, phases, commandes, fichiers touchés, anomalies, données sensibles, limites).\nLe rapport final ajoute en annexe la chronologie complète et les alertes (générées sans LLM), et est écrit dans `/home/node/.n8n-files/<jobId>/report.md` + `timeline.json`, puis renvoyé au Webhook.",
+        "height": 250,
+        "width": 1100,
+        "color": 3
+      },
+      "id": "873426da-ac45-4b93-a5f0-3ef702e2bf95",
+      "name": "Note 5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "session-video-report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bb9d355e-1efc-41b4-a0ea-c2806117d005",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        180
+      ],
+      "webhookId": "06ace43e-c5a8-4002-a0ae-390c6d8aa09b"
+    },
+    {
+      "parameters": {},
+      "id": "23c10b4d-4e1f-42b2-8d26-a21da4dd619f",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// =====================================================================\n//  CONFIGURATION : valeurs par défaut (modifiables ici)\n//  Les clés listées dans OVERRIDABLE peuvent être surchargées par le Webhook\n//  (champs de formulaire, query string ou body JSON).\n// =====================================================================\nconst CONFIG = {\n  // --- Fichiers ---\n  workRoot: '/home/node/.n8n-files',                      // dossier de travail (autorisé par n8n)\n  manualVideoPath: '/home/node/.n8n-files/session.avi',   // vidéo utilisée par le Manual Trigger\n\n  // --- Extraction des frames ---\n  mode: 'interval',        // 'interval' = 1 frame toutes les N s | 'scene' = quand l'écran change\n  frameIntervalSec: 5,     // mode interval\n  sceneThreshold: 0.01,    // mode scene : 0.005 = très sensible ... 0.1 = peu sensible\n  maxGapSec: 30,           // mode scene : force une frame au moins toutes les N secondes\n  maxFrames: 600,          // garde-fou coût / durée\n  frameWidth: 1280,        // largeur max des frames (px)\n  jpegQuality: 3,          // 2 (meilleure) .. 31 (pire)\n\n  // --- Analyse vision ---\n  provider: 'anthropic',   // 'anthropic' | 'ollama' (100 % local, rien ne sort de la machine)\n  batchSize: 4,            // frames envoyées par appel au modèle\n  contextFramesCount: 3,   // analyses précédentes renvoyées en contexte au lot suivant\n  visionModel: 'claude-sonnet-5-5',        // ex. 'claude-haiku-4-5-20251001' pour réduire le coût\n  summaryModel: 'claude-sonnet-5-5',\n  ollamaUrl: 'http://host.docker.internal:11434',\n  ollamaVisionModel: 'qwen2.5vl:7b',\n  ollamaSummaryModel: 'qwen2.5:14b',\n  ollamaVisionNumCtx: 8192,\n  ollamaSummaryNumCtx: 32768,\n\n  // --- Compte rendu ---\n  language: 'français',\n  sessionContext: '',      // ex. \"Maintenance d'un serveur Debian via RDP\"\n  summaryMaxChars: 120000, // taille max de la chronologie envoyée à la synthèse\n\n  // --- Divers ---\n  cleanupFrames: false     // true = supprime les JPEG une fois le rapport généré\n};\n\nconst OVERRIDABLE = ['mode', 'frameIntervalSec', 'sceneThreshold', 'maxGapSec', 'maxFrames', 'batchSize',\n  'contextFramesCount', 'provider', 'visionModel', 'summaryModel', 'language', 'sessionContext', 'cleanupFrames'];\n\nconst item = $input.item;\nconst isWebhook = !!item.json.headers;\nconst input = Object.assign({}, item.json.query || {}, item.json.body || {});\n\nconst cfg = Object.assign({}, CONFIG);\nfor (const k of OVERRIDABLE) {\n  const v = input[k];\n  if (v === undefined || v === null || v === '') continue;\n  const t = typeof CONFIG[k];\n  cfg[k] = t === 'number' ? Number(v) : t === 'boolean' ? String(v) === 'true' : String(v);\n}\n\n// --- Validation ---\nif (!['interval', 'scene'].includes(cfg.mode)) throw new Error('mode invalide : ' + cfg.mode);\nif (!['anthropic', 'ollama'].includes(cfg.provider)) throw new Error('provider invalide : ' + cfg.provider);\nfor (const k of ['frameIntervalSec', 'sceneThreshold', 'maxGapSec', 'maxFrames', 'batchSize']) {\n  if (!Number.isFinite(cfg[k]) || cfg[k] <= 0) throw new Error('Paramètre numérique invalide : ' + k);\n}\ncfg.batchSize = Math.min(Math.floor(cfg.batchSize), 20);\ncfg.maxFrames = Math.floor(cfg.maxFrames);\ncfg.contextFramesCount = Math.max(0, Math.floor(Number(cfg.contextFramesCount) || 0));\n\n// --- Identifiants du job ---\nconst stamp = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);\nconst jobId = 'job_' + stamp + '_' + Math.random().toString(36).slice(2, 6);\nconst jobDir = cfg.workRoot + '/' + jobId;\nconst framesDir = jobDir + '/frames';\n\n// --- Source vidéo : upload (binaire) ou chemin local ---\nconst binKeys = Object.keys(item.binary || {});\nconst hasUpload = binKeys.length > 0;\nlet videoPath;\nif (hasUpload) {\n  const orig = item.binary[binKeys[0]].fileName || 'session.avi';\n  const m = orig.match(/\\.(avi|mp4|mkv|mov|webm|wmv|flv|mpg|mpeg)$/i);\n  videoPath = cfg.workRoot + '/' + jobId + '_input.' + (m ? m[1].toLowerCase() : 'avi');\n} else {\n  videoPath = String(input.videoPath || cfg.manualVideoPath);\n  if (isWebhook && !videoPath.startsWith(cfg.workRoot + '/')) {\n    throw new Error('videoPath doit se trouver sous ' + cfg.workRoot + ' lorsqu\\'il est fourni via le Webhook.');\n  }\n}\nif (!/^\\/[A-Za-z0-9_\\-. \\/]+$/.test(videoPath) || videoPath.includes('..')) {\n  throw new Error('Chemin vidéo invalide (caractères autorisés : lettres, chiffres, _ - . espace /) : ' + videoPath);\n}\n\nreturn {\n  json: {\n    jobId, jobDir, framesDir, videoPath, hasUpload,\n    binaryKey: hasUpload ? binKeys[0] : null,\n    source: isWebhook ? 'webhook' : 'manual',\n    startedAt: new Date().toISOString(),\n    config: cfg\n  },\n  binary: item.binary\n};"
+      },
+      "id": "941bedd6-b828-44a1-8cba-1b0285711bf9",
+      "name": "Init Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cdc41318-1670-4d33-8e8a-22c5daf91e1e",
+              "leftValue": "={{ $json.hasUpload }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4f118ca4-1df6-4fa4-b373-b1dc6249d002",
+      "name": "Has Upload?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.videoPath }}",
+        "dataPropertyName": "={{ $json.binaryKey }}",
+        "options": {}
+      },
+      "id": "e5c7e590-4cf9-40d9-b4e8-d38fa3c4688d",
+      "name": "Write Video to Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        740,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=ffprobe -v error -print_format json -show_format -show_streams \"{{ $('Init Job').first().json.videoPath }}\"",
+        "executeOnce": true
+      },
+      "id": "382b0754-7bf3-46d9-b9c8-8cf7bcc34280",
+      "name": "Probe Video",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst cfg = ctx.config;\nconst out = $input.first().json;\n\nlet info;\ntry { info = JSON.parse(out.stdout); }\ncatch (e) { throw new Error('ffprobe : sortie illisible. ' + String(out.stdout || out.stderr || '').slice(0, 300)); }\n\nconst v = (info.streams || []).find(s => s.codec_type === 'video');\nif (!v) throw new Error('Aucun flux vidéo détecté dans le fichier.');\n\nconst rate = (v.avg_frame_rate && v.avg_frame_rate !== '0/0') ? v.avg_frame_rate : (v.r_frame_rate || '0/1');\nconst parts = String(rate).split('/').map(Number);\nconst fps = parts[1] ? parts[0] / parts[1] : 0;\n\nlet duration = parseFloat((info.format && info.format.duration) || v.duration || 0);\nif (!(duration > 0) && v.nb_frames && fps) duration = Number(v.nb_frames) / fps;\nif (!(duration > 0)) throw new Error('Durée de la vidéo introuvable (fichier tronqué ?).');\n\nlet interval = cfg.frameIntervalSec;\nlet note = '';\nif (cfg.mode === 'interval') {\n  const est = Math.ceil(duration / interval);\n  if (est > cfg.maxFrames) {\n    interval = Math.ceil(duration / cfg.maxFrames);\n    note = 'Intervalle porté à ' + interval + ' s pour respecter maxFrames=' + cfg.maxFrames + '.';\n  }\n}\n\nconst scale = \"scale='min(\" + cfg.frameWidth + \",iw)':-2\";\nconst vf = cfg.mode === 'interval'\n  ? 'fps=' + (1 / interval).toFixed(6) + ',' + scale + ',showinfo'\n  : \"select='eq(n,0)+gt(scene,\" + cfg.sceneThreshold + \")+gte(t-prev_selected_t,\" + cfg.maxGapSec + \")',\" + scale + ',showinfo';\n\nconst log = ctx.jobDir + '/ffmpeg.log';\nconst cmd = [\n  'mkdir -p \"' + ctx.framesDir + '\"',\n  'rm -f \"' + ctx.framesDir + '\"/f_*.jpg',\n  '(ffmpeg -hide_banner -nostats -y -i \"' + ctx.videoPath + '\" -vf \"' + vf + '\" -fps_mode vfr -q:v ' + cfg.jpegQuality +\n    ' -frames:v ' + cfg.maxFrames + ' \"' + ctx.framesDir + '/f_%05d.jpg\" 2> \"' + log +\n    '\" || { tail -n 20 \"' + log + '\" >&2; exit 1; })',\n  'grep Parsed_showinfo \"' + log + '\" | grep -o \"pts_time:[0-9.]*\" | cut -d: -f2',\n  'echo \"FILES:$(ls \"' + ctx.framesDir + '\" | wc -l)\"'\n].join(' && ');\n\nreturn [{ json: {\n  mode: cfg.mode, intervalUsed: interval, duration, fps,\n  width: v.width, height: v.height, codec: v.codec_name,\n  vf, note, ffmpegCmd: cmd\n} }];"
+      },
+      "id": "57599181-ee19-4df0-99fa-94adada88287",
+      "name": "Plan Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.ffmpegCmd }}",
+        "executeOnce": true
+      },
+      "id": "a835394e-fb9a-4287-99d1-74c9fe0ce841",
+      "name": "Extract Frames",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst plan = $('Plan Extraction').first().json;\nconst lines = String($input.first().json.stdout || '').split('\\n').map(s => s.trim()).filter(Boolean);\n\nconst filesLine = lines.find(l => l.startsWith('FILES:'));\nconst files = filesLine ? parseInt(filesLine.split(':')[1], 10) : 0;\nconst ts = lines.filter(l => /^[0-9]+(\\.[0-9]+)?$/.test(l)).map(Number);\n\nconst n = Math.min(ts.length || files, files, ctx.config.maxFrames);\nif (!n) throw new Error('Aucune frame extraite (vidéo vide, ou seuil de scène trop élevé).');\n\nconst tc = s => {\n  s = Math.max(0, Math.round(s));\n  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(x => String(x).padStart(2, '0')).join(':');\n};\n\nconst out = [];\nfor (let i = 0; i < n; i++) {\n  const t = ts[i] !== undefined ? ts[i] : i * plan.intervalUsed;\n  out.push({ json: {\n    index: i + 1,\n    timestampSec: Math.round(t * 10) / 10,\n    timecode: tc(t),\n    framePath: ctx.framesDir + '/f_' + String(i + 1).padStart(5, '0') + '.jpg'\n  } });\n}\nreturn out;"
+      },
+      "id": "57e8e829-1364-4719-bfc5-abaeb21d3cb1",
+      "name": "Build Frame List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": "={{ $('Init Job').first().json.config.batchSize }}",
+        "options": {}
+      },
+      "id": "755cbb7d-0a4d-4560-9e13-f1c0880e9948",
+      "name": "Loop Frames",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1940,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.framePath }}",
+        "options": {
+          "dataPropertyName": "frame"
+        }
+      },
+      "id": "7691b316-f23f-4eed-8157-064754894d56",
+      "name": "Read Frame Files",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst cfg = ctx.config;\n\n// Métadonnées de toutes les frames (index -> timecode)\nconst meta = {};\nfor (const f of $('Build Frame List').all()) meta[f.json.index] = f.json;\n\n// Frames de ce lot (binaires lus depuis le disque)\nconst items = $input.all();\nconst frames = [];\nconst images = [];\nfor (let i = 0; i < items.length; i++) {\n  const key = Object.keys(items[i].binary || {})[0];\n  if (!key) continue;\n  const name = items[i].binary[key].fileName || '';\n  const m = name.match(/f_(\\d+)\\.jpe?g$/i);\n  const f = m ? meta[parseInt(m[1], 10)] : null;\n  if (!f) throw new Error('Frame inattendue : ' + name);\n  const buf = await this.helpers.getBinaryDataBuffer(i, key);\n  frames.push({ index: f.index, timestampSec: f.timestampSec, timecode: f.timecode });\n  images.push(buf.toString('base64'));\n}\nif (!frames.length) throw new Error('Aucune frame dans ce lot.');\n\n// Contexte : dernières analyses du lot précédent (continuité du récit)\nlet previous = [];\nif ($runIndex > 0 && cfg.contextFramesCount > 0) {\n  try {\n    previous = $('Parse Vision Response').all(0, $runIndex - 1).map(i => i.json).slice(-cfg.contextFramesCount);\n  } catch (e) { previous = []; }\n}\nconst ctxText = previous.length\n  ? 'Contexte (dernières captures déjà analysées) :\\n' +\n    previous.map(p => '- [' + p.timecode + '] (' + (p.app || '?') + ') ' + (p.action || p.summary || '')).join('\\n')\n  : 'Aucun contexte antérieur : ce sont les premières captures de la session.';\n\nconst L = cfg.language;\nconst SYSTEM = [\n  \"Tu es un analyste spécialisé dans l'audit de sessions de connexion à distance (RDP, VNC, SSH, console d'hyperviseur) enregistrées en vidéo sur une machine virtuelle.\",\n  \"Tu reçois des captures d'écran successives, chacune identifiée par un numéro et un timecode. Pour CHAQUE capture, tu décris factuellement ce qui est visible et ce que l'utilisateur est en train de faire.\",\n  'Règles :',\n  \"- Ne décris que ce que tu vois ; n'invente rien. Si un texte est illisible, écris \\\"[illisible]\\\".\",\n  '- Transcris fidèlement les commandes, chemins, noms d\\'hôtes, URLs et messages d\\'erreur visibles.',\n  '- Ne recopie JAMAIS la valeur d\\'un mot de passe, token, clé ou secret : signale uniquement son type et son emplacement.',\n  '- Compare avec le contexte précédent pour dire si l\\'écran a changé de façon significative.',\n  '- Rédige tous les champs textuels en ' + L + '.',\n  '- Réponds UNIQUEMENT par un objet JSON valide, sans texte autour ni balises markdown.'\n].join('\\n');\n\nconst SCHEMA = 'Réponds avec exactement cet objet JSON (un élément par capture, dans l\\'ordre, avec le frame_index fourni) :\\n' +\n  '{\"frames\":[{\"frame_index\":0,\"foreground_app\":\"application ou fenêtre au premier plan\",\"screen_summary\":\"1 à 2 phrases\",\"action\":\"action probable de l\\'utilisateur\",\"changed\":true,\"visible_text\":[\"lignes de texte importantes (max 8)\"],\"commands_or_inputs\":[\"commandes tapées ou saisies\"],\"paths_hosts_services\":[\"fichiers, chemins, hôtes, URLs, services\"],\"errors_or_warnings\":[\"messages d\\'erreur ou d\\'avertissement\"],\"sensitive_data\":[{\"type\":\"password|token|key|personal_data|other\",\"where\":\"emplacement sans la valeur\"}],\"confidence\":\"high|medium|low\"}]}';\n\nconst sessionLine = cfg.sessionContext ? 'Contexte de la session : ' + cfg.sessionContext + '\\n\\n' : '';\nconst listing = 'Captures fournies, dans l\\'ordre : ' + frames.map(f => '#' + f.index + ' (' + f.timecode + ')').join(', ') + '.';\nconst userText = ctxText + '\\n\\n' + sessionLine + listing + '\\n\\n' + SCHEMA;\n\nlet url, body;\nif (cfg.provider === 'anthropic') {\n  const content = [];\n  for (let i = 0; i < frames.length; i++) {\n    content.push({ type: 'text', text: 'Capture #' + frames[i].index + ' - timecode ' + frames[i].timecode });\n    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: images[i] } });\n  }\n  content.push({ type: 'text', text: userText });\n  url = 'https://api.anthropic.com/v1/messages';\n  body = {\n    model: cfg.visionModel,\n    max_tokens: Math.min(8000, 700 * frames.length + 500),\n    system: SYSTEM,\n    messages: [{ role: 'user', content }]\n  };\n} else {\n  url = cfg.ollamaUrl + '/api/chat';\n  body = {\n    model: cfg.ollamaVisionModel,\n    stream: false,\n    format: 'json',\n    options: { temperature: 0, num_ctx: cfg.ollamaVisionNumCtx },\n    messages: [\n      { role: 'system', content: SYSTEM },\n      { role: 'user', content: userText, images }\n    ]\n  };\n}\n\nreturn [{ json: { provider: cfg.provider, url, body, frames } }];"
+      },
+      "id": "75f3b794-4a90-4118-bfff-b4e601d292a8",
+      "name": "Build Vision Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3e136930-29c8-4542-8b20-11d0736fa83b",
+              "leftValue": "={{ $json.provider }}",
+              "rightValue": "anthropic",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "071e14a4-c0e9-46a5-9701-afdfcee5b833",
+      "name": "Vision Provider?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2660,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "9f01c6d7-c018-4ec3-90fe-f231c69da302",
+      "name": "Vision - Anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2900,
+        420
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_ME",
+          "name": "Anthropic account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "60d747fb-c86e-417e-a84e-66fd6b95c464",
+      "name": "Vision - Ollama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2900,
+        620
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const expected = $('Build Vision Request').last().json.frames;\nconst res = $input.first().json;\n\nlet text = '';\nlet err = null;\nif (res.error) err = typeof res.error === 'string' ? res.error : JSON.stringify(res.error).slice(0, 300);\nelse if (Array.isArray(res.content)) text = res.content.filter(b => b.type === 'text').map(b => b.text).join('\\n');\nelse if (res.message && res.message.content) text = res.message.content;\nelse err = 'Réponse inattendue du fournisseur LLM';\n\nfunction extractJson(t) {\n  let s = String(t).trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\n  try { return JSON.parse(s); } catch (e) { /* on tente de isoler l'objet */ }\n  const a = s.indexOf('{'), b = s.lastIndexOf('}');\n  if (a >= 0 && b > a) return JSON.parse(s.slice(a, b + 1));\n  throw new Error('JSON introuvable');\n}\n\nlet list = [];\nif (!err) {\n  try {\n    const parsed = extractJson(text);\n    list = Array.isArray(parsed) ? parsed : (parsed.frames || parsed.captures || []);\n  } catch (e) { err = 'JSON invalide : ' + String(text).slice(0, 200); }\n}\n\nconst toArr = v => Array.isArray(v) ? v.map(x => typeof x === 'string' ? x : JSON.stringify(x)).filter(Boolean)\n  : (v ? [String(v)] : []);\nconst sens = v => Array.isArray(v)\n  ? v.map(x => typeof x === 'string' ? x : ((x.type || 'other') + (x.where ? ' (' + x.where + ')' : '')))\n  : toArr(v);\n\nconst byIndex = new Map();\nfor (const r of list) if (r && r.frame_index !== undefined) byIndex.set(Number(r.frame_index), r);\n\nconst out = expected.map((f, pos) => {\n  const r = byIndex.get(f.index) || (byIndex.size === 0 ? list[pos] : undefined);\n  if (!r) {\n    return { json: {\n      index: f.index, timestampSec: f.timestampSec, timecode: f.timecode,\n      app: '', summary: '(analyse indisponible)', action: '(analyse indisponible)', changed: true,\n      visibleText: [], commands: [], targets: [], errors: [], sensitive: [],\n      confidence: 'low', parseError: true, errorDetail: err || 'frame absente de la réponse'\n    } };\n  }\n  return { json: {\n    index: f.index, timestampSec: f.timestampSec, timecode: f.timecode,\n    app: r.foreground_app || '', summary: r.screen_summary || '', action: r.action || '',\n    changed: r.changed !== false,\n    visibleText: toArr(r.visible_text), commands: toArr(r.commands_or_inputs),\n    targets: toArr(r.paths_hosts_services), errors: toArr(r.errors_or_warnings),\n    sensitive: sens(r.sensitive_data), confidence: r.confidence || 'medium', parseError: false\n  } };\n});\nreturn out;"
+      },
+      "id": "ea61f897-bf14-4cf7-8271-d2c3cc764c9b",
+      "name": "Parse Vision Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst cfg = ctx.config;\nconst plan = $('Plan Extraction').first().json;\nconst frames = $input.all().map(i => i.json).sort((a, b) => a.index - b.index);\n\nconst tc = s => {\n  s = Math.max(0, Math.round(s));\n  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(x => String(x).padStart(2, '0')).join(':');\n};\nconst clip = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));\n\n// 1) Fusion des frames consécutives \"sans changement\"\nconst entries = [];\nfor (const f of frames) {\n  const prev = entries[entries.length - 1];\n  const trivial = f.changed === false && !f.commands.length && !f.errors.length && !f.sensitive.length && !f.parseError;\n  if (prev && trivial) { prev.untilSec = f.timestampSec; prev.frameCount += 1; continue; }\n  entries.push(Object.assign({}, f, { untilSec: f.timestampSec, frameCount: 1 }));\n}\n\n// 2) Rendu texte avec compaction progressive si la chronologie est trop longue\nfunction render(level) {\n  const lines = [];\n  let lastApp = null;\n  for (const e of entries) {\n    const important = e.commands.length || e.errors.length || e.sensitive.length || e.app !== lastApp;\n    lastApp = e.app;\n    if (level >= 2 && !important) continue;\n    const range = e.untilSec > e.timestampSec ? '→' + tc(e.untilSec) : '';\n    let line = '[' + e.timecode + range + '] (' + (e.app || '?') + ') ' + (e.action || e.summary);\n    if (level === 0 && e.summary && e.summary !== e.action) line += ' — ' + clip(e.summary, 200);\n    if (e.commands.length) line += ' | CMD: ' + e.commands.map(c => clip(c, 200)).join(' ; ');\n    if (level === 0 && e.visibleText.length) line += ' | TEXTE: ' + e.visibleText.slice(0, 3).map(t => clip(t, 120)).join(' / ');\n    if (level <= 1 && e.targets.length) line += ' | CIBLES: ' + e.targets.slice(0, 5).map(t => clip(t, 120)).join(' ; ');\n    if (e.errors.length) line += ' | ERREUR: ' + e.errors.map(t => clip(t, 160)).join(' ; ');\n    if (e.sensitive.length) line += ' | SENSIBLE: ' + e.sensitive.join(' ; ');\n    lines.push(line);\n  }\n  return lines.join('\\n');\n}\nlet level = 0;\nlet timeline = render(0);\nwhile (timeline.length > cfg.summaryMaxChars && level < 2) { level++; timeline = render(level); }\nif (timeline.length > cfg.summaryMaxChars) timeline = timeline.slice(0, cfg.summaryMaxChars) + '\\n[... chronologie tronquée ...]';\n\n// 3) Statistiques\nconst apps = {};\nfor (const f of frames) if (f.app) apps[f.app] = (apps[f.app] || 0) + 1;\nconst stats = {\n  frames: frames.length,\n  parseErrors: frames.filter(f => f.parseError).length,\n  entries: entries.length,\n  compactionLevel: level,\n  commandsCount: frames.reduce((n, f) => n + f.commands.length, 0),\n  errorsCount: frames.filter(f => f.errors.length).length,\n  sensitiveCount: frames.filter(f => f.sensitive.length).length,\n  topApps: Object.entries(apps).sort((a, b) => b[1] - a[1]).slice(0, 8).map(x => x[0])\n};\n\n// 4) Requête de synthèse\nconst L = cfg.language;\nconst SYSTEM = [\n  \"Tu es un auditeur technique. À partir de la chronologie d'une session de connexion à distance sur une machine virtuelle (extraite image par image d'un enregistrement vidéo), tu rédiges un compte rendu clair, factuel et exploitable.\",\n  \"Règles : ne rien inventer ; signaler explicitement toute incertitude ; ne jamais reproduire de mot de passe, token ou secret ; utiliser les timecodes (hh:mm:ss) pour référencer les événements ; rédiger en \" + L + '.'\n].join('\\n');\n\nconst userText =\n  'Contexte de la session : ' + (cfg.sessionContext || 'non précisé') + '\\n' +\n  'Durée de la vidéo : ' + tc(plan.duration) + ' — ' + frames.length + ' captures analysées (' +\n  (plan.mode === 'interval' ? '1 toutes les ' + plan.intervalUsed + ' s' : 'détection de changement de scène') + ').\\n\\n' +\n  'Chronologie brute, format [timecode] (application) action | CMD | TEXTE | CIBLES | ERREUR | SENSIBLE. ' +\n  'Une flèche (→) indique une période sans changement visible.\\n\\n<chronologie>\\n' + timeline + '\\n</chronologie>\\n\\n' +\n  'Rédige le compte rendu en Markdown, en ' + L + ', avec exactement ces sections (## niveau 2) :\\n' +\n  '1. Résumé exécutif (5 à 8 lignes : objectif probable de la session, déroulé global, résultat)\\n' +\n  '2. Contexte technique (OS, outils, applications, hôtes et comptes visibles)\\n' +\n  '3. Déroulé par phases (phases chronologiques avec plages de timecodes et ce qui a été fait)\\n' +\n  '4. Commandes et actions notables (tableau : timecode | commande ou action | effet)\\n' +\n  '5. Fichiers, services, hôtes et configurations touchés\\n' +\n  '6. Erreurs, échecs et anomalies (avec timecodes)\\n' +\n  '7. Données sensibles exposées à l\\'écran (type et timecode uniquement, jamais la valeur)\\n' +\n  '8. Limites de l\\'analyse (ce qui ne peut pas être déterminé : actions entre deux captures, texte illisible, etc.)';\n\nlet url, body;\nif (cfg.provider === 'anthropic') {\n  url = 'https://api.anthropic.com/v1/messages';\n  body = { model: cfg.summaryModel, max_tokens: 8000, system: SYSTEM, messages: [{ role: 'user', content: userText }] };\n} else {\n  url = cfg.ollamaUrl + '/api/chat';\n  body = {\n    model: cfg.ollamaSummaryModel, stream: false,\n    options: { temperature: 0.2, num_ctx: cfg.ollamaSummaryNumCtx },\n    messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }]\n  };\n}\n\nreturn [{ json: { provider: cfg.provider, url, body, entries, stats, timelineChars: timeline.length } }];"
+      },
+      "id": "1085e9b7-d747-4608-a1ac-f8ac8f48450f",
+      "name": "Build Timeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "781c7d07-d3e9-481c-8db0-273392710efe",
+              "leftValue": "={{ $json.provider }}",
+              "rightValue": "anthropic",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1ff43c12-7a37-46d5-90bf-ae4c8107b890",
+      "name": "Summary Provider?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "fbd26494-b7aa-487f-93dc-c6eb002f4806",
+      "name": "Summary - Anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        -40
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_ME",
+          "name": "Anthropic account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "5d8b6ae4-e371-44c8-aa48-566d5c9f8891",
+      "name": "Summary - Ollama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const res = $input.first().json;\nlet md = '';\nlet warning = null;\n\nif (res.error) warning = typeof res.error === 'string' ? res.error : JSON.stringify(res.error).slice(0, 300);\nelse if (Array.isArray(res.content)) md = res.content.filter(b => b.type === 'text').map(b => b.text).join('\\n');\nelse if (res.message && res.message.content) md = res.message.content;\n\nif (!String(md).trim()) {\n  warning = warning || 'réponse vide';\n  md = '> ⚠️ La synthèse automatique a échoué (' + warning + '). Se référer à la chronologie détaillée en annexe.';\n}\nreturn [{ json: { summaryMarkdown: String(md).trim(), warning } }];"
+      },
+      "id": "ceab377f-07ae-41d2-94a9-0c25c551d16e",
+      "name": "Parse Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst cfg = ctx.config;\nconst plan = $('Plan Extraction').first().json;\nconst tl = $('Build Timeline').first().json;\nconst sum = $input.first().json;\nconst stats = tl.stats;\n\nconst tc = s => {\n  s = Math.max(0, Math.round(s));\n  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60].map(x => String(x).padStart(2, '0')).join(':');\n};\nconst esc = s => String(s || '').replace(/\\|/g, '\\\\|').replace(/\\r?\\n/g, ' ');\n\nconst models = cfg.provider === 'anthropic'\n  ? 'Anthropic — vision : ' + cfg.visionModel + ', synthèse : ' + cfg.summaryModel\n  : 'Ollama (local) — vision : ' + cfg.ollamaVisionModel + ', synthèse : ' + cfg.ollamaSummaryModel;\nconst sampling = plan.mode === 'interval'\n  ? '1 capture toutes les ' + plan.intervalUsed + ' s'\n  : 'détection de changement de scène (seuil ' + cfg.sceneThreshold + ', max ' + cfg.maxGapSec + ' s entre deux captures)';\n\nconst header = [\n  '# Compte rendu de session distante', '',\n  '| | |', '|---|---|',\n  '| Job | ' + ctx.jobId + ' |',\n  '| Vidéo | ' + ctx.videoPath + ' |',\n  '| Durée | ' + tc(plan.duration) + ' |',\n  '| Résolution source | ' + plan.width + '×' + plan.height + ' (' + plan.codec + ') |',\n  '| Échantillonnage | ' + sampling + ' |',\n  '| Captures analysées | ' + stats.frames + ' (échecs d\\'analyse : ' + stats.parseErrors + ') |',\n  '| Modèles | ' + models + ' |',\n  '| Généré le | ' + new Date().toISOString() + ' |'\n].join('\\n');\n\nconst rows = tl.entries.map(e => {\n  const range = e.untilSec > e.timestampSec ? ' → ' + tc(e.untilSec) : '';\n  const cmds = e.commands.length ? ' — `' + esc(e.commands.join(' ; ')) + '`' : '';\n  return '| ' + e.timecode + range + ' | ' + esc(e.app) + ' | ' + esc(e.action || e.summary) + cmds + ' |';\n});\nconst annexA = ['## Annexe A — Chronologie détaillée', '', '| Timecode | Application | Action |', '|---|---|---|'].concat(rows).join('\\n');\n\nconst alerts = [];\nfor (const e of tl.entries) {\n  for (const x of e.errors) alerts.push('- [' + e.timecode + '] ❌ ' + esc(x));\n  for (const x of e.sensitive) alerts.push('- [' + e.timecode + '] 🔐 ' + esc(x));\n}\nconst annexB = '## Annexe B — Alertes (erreurs et données sensibles)\\n\\n' + (alerts.length ? alerts.join('\\n') : '_Aucune détectée._');\n\nconst reportMarkdown = [header, sum.summaryMarkdown, annexA, annexB].join('\\n\\n---\\n\\n');\n\nconst timeline = tl.entries.map(e => ({\n  timecode: e.timecode, untilTimecode: tc(e.untilSec), app: e.app, summary: e.summary, action: e.action,\n  commands: e.commands, targets: e.targets, errors: e.errors, sensitive: e.sensitive,\n  confidence: e.confidence, frames: e.frameCount, parseError: e.parseError\n}));\n\nreturn [{ json: {\n  reportMarkdown, timeline,\n  response: {\n    status: 'done',\n    jobId: ctx.jobId,\n    videoDuration: tc(plan.duration),\n    framesAnalysed: stats.frames,\n    analysisFailures: stats.parseErrors,\n    summaryWarning: sum.warning,\n    files: { report: ctx.jobDir + '/report.md', timeline: ctx.jobDir + '/timeline.json' },\n    report: reportMarkdown\n  }\n} }];"
+      },
+      "id": "995532ce-a2d7-42a0-82a9-b6d991892635",
+      "name": "Assemble Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $('Init Job').first().json;\nconst fin = $input.first().json;\n\nconst mk = async (name, content, mime, target) => ({\n  json: { targetPath: target },\n  binary: { data: await this.helpers.prepareBinaryData(Buffer.from(content, 'utf8'), name, mime) }\n});\n\nreturn [\n  await mk('report.md', fin.reportMarkdown, 'text/markdown', ctx.jobDir + '/report.md'),\n  await mk('timeline.json', JSON.stringify(fin.timeline, null, 2), 'application/json', ctx.jobDir + '/timeline.json')\n];"
+      },
+      "id": "588cbcc1-272b-4ed6-9545-b34811ec5609",
+      "name": "Prepare Output Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.targetPath }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "2f1ed0db-337e-46b9-97d9-427fb69053e0",
+      "name": "Write Output Files",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        3620,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{ $('Init Job').first().json.config.cleanupFrames ? 'rm -rf \"' + $('Init Job').first().json.framesDir + '\"' : 'echo frames conservees' }}",
+        "executeOnce": true
+      },
+      "id": "05fd34fb-7c70-4d51-b678-be784fa4dbfe",
+      "name": "Cleanup Frames",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        3860,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Assemble Final Report').first().json.response }}",
+        "options": {}
+      },
+      "id": "eaf832a0-aaeb-4163-904d-16e8c7201b6b",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4100,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Init Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Init Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Job": {
+      "main": [
+        [
+          {
+            "node": "Has Upload?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Upload?": {
+      "main": [
+        [
+          {
+            "node": "Write Video to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Probe Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Video to Disk": {
+      "main": [
+        [
+          {
+            "node": "Probe Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Video": {
+      "main": [
+        [
+          {
+            "node": "Plan Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Extraction": {
+      "main": [
+        [
+          {
+            "node": "Extract Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Frames": {
+      "main": [
+        [
+          {
+            "node": "Build Frame List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Frame List": {
+      "main": [
+        [
+          {
+            "node": "Loop Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Frames": {
+      "main": [
+        [
+          {
+            "node": "Build Timeline",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Frame Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Frame Files": {
+      "main": [
+        [
+          {
+            "node": "Build Vision Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Vision Request": {
+      "main": [
+        [
+          {
+            "node": "Vision Provider?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vision Provider?": {
+      "main": [
+        [
+          {
+            "node": "Vision - Anthropic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Vision - Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vision - Anthropic": {
+      "main": [
+        [
+          {
+            "node": "Parse Vision Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vision - Ollama": {
+      "main": [
+        [
+          {
+            "node": "Parse Vision Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vision Response": {
+      "main": [
+        [
+          {
+            "node": "Loop Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Timeline": {
+      "main": [
+        [
+          {
+            "node": "Summary Provider?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary Provider?": {
+      "main": [
+        [
+          {
+            "node": "Summary - Anthropic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summary - Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary - Anthropic": {
+      "main": [
+        [
+          {
+            "node": "Parse Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary - Ollama": {
+      "main": [
+        [
+          {
+            "node": "Parse Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Summary": {
+      "main": [
+        [
+          {
+            "node": "Assemble Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Final Report": {
+      "main": [
+        [
+          {
+            "node": "Prepare Output Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Output Files": {
+      "main": [
+        [
+          {
+            "node": "Write Output Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Output Files": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Frames": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
