@@ -1,0 +1,105 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Upload de vidéo",
+        "formDescription": "Déposez un fichier vidéo au format .AVI depuis votre ordinateur",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Fichier vidéo (.AVI)",
+              "fieldType": "file",
+              "fieldName": "video",
+              "multipleFiles": false,
+              "acceptFileTypes": ".avi",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Envoyer"
+        }
+      },
+      "id": "8ddba50f-02d6-4be7-8fef-737b5d5da557",
+      "name": "Upload Video",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "d00ee979-2860-45cb-941f-407f0f7659eb"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "import base64\nimport subprocess\n\nitems = _items\nif not items:\n    raise Exception(\"Aucun fichier recu\")\n\nitem = items[0]\njson_data = item.get('json') or {}\nvideo_base64 = json_data.get('videoBase64')\nif video_base64 is None:\n    raise Exception(\"Champ 'videoBase64' introuvable (noeud 'To Base64' manquant ou mal configure)\")\n\nraw = base64.b64decode(video_base64)\n\nproc = subprocess.run(\n    ['ffmpeg', '-y', '-f', 'avi', '-i', 'pipe:0',\n     '-frames:v', '500', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'],\n    input=raw,\n    stdout=subprocess.PIPE,\n    stderr=subprocess.PIPE,\n    timeout=120\n)\n\nif proc.returncode != 0:\n    stderr_tail = proc.stderr.decode('utf-8', errors='replace')[-1500:]\n    raise Exception(\"ffmpeg a echoue (code {}): {}\".format(proc.returncode, stderr_tail))\n\nstream = proc.stdout\nSOI = b'\\xff\\xd8'\nEOI = b'\\xff\\xd9'\nframes = []\nstart = 0\nwhile True:\n    soi_idx = stream.find(SOI, start)\n    if soi_idx == -1:\n        break\n    eoi_idx = stream.find(EOI, soi_idx + 2)\n    if eoi_idx == -1:\n        break\n    eoi_idx += 2\n    frames.append(stream[soi_idx:eoi_idx])\n    start = eoi_idx\n\nif not frames:\n    stderr_tail = proc.stderr.decode('utf-8', errors='replace')[-1500:]\n    raise Exception(\"ffmpeg n'a produit aucune frame pour ce fichier. Stderr: \" + stderr_tail)\n\nresults = []\nfor idx, frame_bytes in enumerate(frames, start=1):\n    file_name = 'frame_{:04d}.jpg'.format(idx)\n    results.append({\n        'json': {\n            'frameNumber': idx,\n            'fileName': file_name,\n            'mimeType': 'image/jpeg',\n            'sizeBytes': len(frame_bytes)\n        },\n        'binary': {\n            'data': {\n                'data': base64.b64encode(frame_bytes).decode('ascii'),\n                'mimeType': 'image/jpeg',\n                'fileName': file_name\n            }\n        }\n    })\n\nreturn results\n"
+      },
+      "id": "4615dd77-372a-4360-8c70-40e9b1ee407d",
+      "name": "Extract Frames",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "video",
+        "destinationKey": "videoBase64",
+        "options": {}
+      },
+      "id": "b19868c9-16c0-4635-9898-bb776ca72277",
+      "name": "To Base64",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Video": {
+      "main": [
+        [
+          {
+            "node": "To Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To Base64": {
+      "main": [
+        [
+          {
+            "node": "Extract Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "1ae99cd6-d1dd-4cc4-a401-1b8e2e05130c",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "83d7f86d3536e8ed8dc0bc9f350fb822c263ea98faa67baaea445353a1979049"
+  },
+  "nodeGroups": [],
+  "id": "a1Ja86QZzJI8ih79",
+  "tags": []
+}
