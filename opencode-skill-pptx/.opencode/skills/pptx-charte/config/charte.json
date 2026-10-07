@@ -1,0 +1,45 @@
+{
+  "_aide": "Reglages de la charte. Les cles commencant par _ sont ignorees. Voir README.md > Maintenance.",
+
+  "template": null,
+  "_template": "null = assets/template.potx (ou .pptx). Peut etre un chemin relatif au dossier du skill.",
+
+  "language": "fr-FR",
+  "default_author": "",
+
+  "layout_aliases": {},
+  "_layout_aliases": "Associe un role (@cover, @section, @content, @two_content, @title_only, @end...) au NOM EXACT d'un layout du template. Exemple : { \"cover\": \"Page de garde\", \"section\": \"Intercalaire\", \"content\": \"Titre et contenu\" }",
+
+  "allowed_layouts": null,
+  "forbidden_layouts": [],
+  "_allowed_layouts": "null = tous. Sinon liste de noms de layouts autorises (les autres sont refuses a la generation).",
+
+  "icon_library_slides": "auto",
+  "_icon_library_slides": "auto = diapos du template dont le texte contient 'icone/icon/picto' ; [5, 6] = numeros de diapos precis ; 'all' = toutes les diapos.",
+
+  "extra_palette": [],
+  "_extra_palette": "Couleurs hex supplementaires tolerees par 'validate' en plus des couleurs du theme. Ex: [\"E6007E\"]",
+
+  "table_style_id": "auto",
+  "table_font_pt": 14,
+  "chart_font_pt": 14,
+  "extra_text_pt": 18,
+  "min_font_pt": 12,
+
+  "footer": {
+    "text": "",
+    "slide_number": true,
+    "date": false,
+    "hide_on_roles": ["cover", "section", "end"]
+  },
+
+  "limits": {
+    "max_bullets_per_placeholder": 7,
+    "max_words_per_slide": 110,
+    "max_title_chars": 90,
+    "avg_char_width_em": 0.52,
+    "line_height_em": 1.2
+  },
+
+  "forbidden_texts": ["lorem ipsum", "cliquez pour", "click to edit", "cliquez ici"]
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "skill": {
+      "pptx-charte": "allow"
+    },
+    "bash": {
+      "*run.cmd*": "allow",
+      "*run.sh*": "allow"
+    }
+  }
+}

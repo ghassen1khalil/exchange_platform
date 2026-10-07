@@ -1,0 +1,197 @@
+{
+  "_comment": "Exemple de spec. Les roles @cover/@section/@content/@two_content/@title_only s'adaptent a tout template ; les noms de layouts, de placeholders et d'icones signales ci-dessous sont ceux du template de DEMO (dev/demo-template.potx).",
+  "output": "output/exemple-deck.pptx",
+  "metadata": {
+    "title": "Bilan du projet Phoenix",
+    "author": "Equipe Plateforme",
+    "subject": "Comite de pilotage"
+  },
+  "footer": {
+    "text": "Confidentiel - Usage interne"
+  },
+  "slides": [
+    {
+      "layout": "@cover",
+      "title": "Bilan du projet Phoenix",
+      "subtitle": "Comite de pilotage - octobre 2026",
+      "notes": "Accueil, rappel de l'ordre du jour (5 min)."
+    },
+    {
+      "layout": "@content",
+      "title": "Trois resultats a retenir",
+      "content": [
+        {
+          "bullets": [
+            "**Delai** : livraison en avance de 3 semaines",
+            "**Budget** : ecart final de -4 % par rapport au plan",
+            [
+              "Economies sur l'hebergement",
+              "Moins de prestations externes"
+            ],
+            "**Qualite** : zero incident majeur en production"
+          ]
+        }
+      ],
+      "notes": "Insister sur le delai."
+    },
+    {
+      "layout": "@two_content",
+      "title": "Indicateurs cles",
+      "content": [
+        {
+          "bullets": [
+            "Disponibilite : 99,95 %",
+            "Temps de reponse : -35 %",
+            "Satisfaction : 4,5 / 5"
+          ]
+        },
+        {
+          "table": {
+            "header": [
+              "Trimestre",
+              "Budget (k€)",
+              "Realise (k€)"
+            ],
+            "rows": [
+              [
+                "T1",
+                "120",
+                "118"
+              ],
+              [
+                "T2",
+                "150",
+                "141"
+              ],
+              [
+                "T3",
+                "130",
+                "128"
+              ]
+            ],
+            "col_widths": [
+              2,
+              3,
+              3
+            ],
+            "alt": "Budget et realise par trimestre"
+          }
+        }
+      ]
+    },
+    {
+      "layout": "@title_only",
+      "title": "Un projet en avance de phase",
+      "content": [],
+      "extras": [
+        {
+          "icon": "icone-cloud",
+          "x": 2.0,
+          "y": 5.0,
+          "size": 2.5
+        },
+        {
+          "icon": "icone-lock",
+          "x": 2.0,
+          "y": 8.5,
+          "size": 2.5
+        },
+        {
+          "text": "Migration cloud terminee",
+          "x": 5.0,
+          "y": 5.5,
+          "w": 12,
+          "h": 1.4,
+          "bold": true,
+          "color": "accent1"
+        },
+        {
+          "text": "Securite renforcee (chiffrement de bout en bout)",
+          "x": 5.0,
+          "y": 9.0,
+          "w": 12,
+          "h": 1.4
+        }
+      ],
+      "_comment": "Icones 'icone-cloud' / 'icone-lock' : propres au template de DEMO (voir 'run icons')."
+    },
+    {
+      "layout": "@section",
+      "title": "Perspectives"
+    },
+    {
+      "layout": "Picture with Caption",
+      "title": "Vue d'ensemble de la plateforme",
+      "content": [
+        {
+          "image": "images/exemple-photo.png",
+          "alt": "Illustration abstraite de la plateforme"
+        },
+        "Schema de principe (illustration)"
+      ],
+      "_comment": "Layout propre au template de DEMO : adaptez le nom (et les zones) a votre catalogue."
+    },
+    {
+      "layout": "Comparison",
+      "title": "Avant / apres",
+      "placeholders": {
+        "1": "Avant",
+        "3": "Apres",
+        "2": {
+          "bullets": [
+            "Deploiement manuel",
+            "Delai : 2 jours"
+          ]
+        },
+        "4": {
+          "bullets": [
+            "Deploiement automatise",
+            "Delai : 20 minutes"
+          ]
+        }
+      },
+      "_comment": "Layout propre au template de DEMO : adaptez le nom et les idx de 'placeholders' a votre catalogue."
+    },
+    {
+      "layout": "@title_only",
+      "title": "Le budget realise suit le plan",
+      "content": [
+        {
+          "chart": {
+            "type": "column",
+            "categories": [
+              "T1",
+              "T2",
+              "T3",
+              "T4"
+            ],
+            "series": [
+              {
+                "name": "Budget (k€)",
+                "values": [
+                  120,
+                  150,
+                  130,
+                  140
+                ]
+              },
+              {
+                "name": "Realise (k€)",
+                "values": [
+                  118,
+                  141,
+                  128,
+                  0
+                ]
+              }
+            ],
+            "data_labels": true,
+            "number_format": "0"
+          },
+          "alt": "Budget et realise par trimestre (k€)"
+        }
+      ],
+      "notes": "T4 non cloture."
+    }
+  ]
+}
